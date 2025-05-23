@@ -48,7 +48,9 @@ public class ClassFileParser {
                     case 8: // String reference
                         classFile.constantPool.add(new ConstantPoolEntry(tag, dis.readUnsignedShort()));
                         break;
-                    case 9, 10, 11: // Fieldref, Methodref, InterfaceMethodref
+                    case 9:  // Fieldref
+                    case 10: // Methodref
+                    case 11: // InterfaceMethodref
                         classFile.constantPool.add(new ConstantPoolEntry(tag,
                                 new int[] {dis.readUnsignedShort(), dis.readUnsignedShort()}));
                         break;
