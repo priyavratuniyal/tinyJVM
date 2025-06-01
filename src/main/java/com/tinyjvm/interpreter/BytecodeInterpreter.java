@@ -1,3 +1,5 @@
+package com.tinyjvm.interpreter;
+
 public class BytecodeInterpreter {
 
     public int execute(JFrame frame) {

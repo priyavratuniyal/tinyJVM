@@ -1,3 +1,5 @@
+package com.tinyjvm.interpreter;
+
 public class LocalVariables {
     private int[] variables;
 

@@ -1,3 +1,5 @@
+package com.tinyjvm.interpreter;
+
 public class OperandStack {
     private int[] stack;
     private int top;
