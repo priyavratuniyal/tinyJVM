@@ -1,7 +1,10 @@
 package com.tinyjvm.threads;
 
+import com.tinyjvm.utils.Logger;
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.Set;
+import java.util.HashSet;
 
 /**
  * Implements a monitor for object synchronization, similar to Java's intrinsic locks.
@@ -12,6 +15,7 @@ public class Monitor {
     private volatile JVMThread owner = null;        // The thread that currently owns the monitor, null if unlocked
     private volatile int entryCount = 0;          // Reentrancy count: how many times the owner has entered
     private final Queue<JVMThread> entryQueue = new LinkedList<>(); // Threads waiting to acquire this monitor
+    private final Set<JVMThread> waitingThreads = new HashSet<>(); // Threads waiting to acquire this monitor (for quick check)
     private final Object internalLock = new Object(); // Dedicated lock for synchronizing access to monitor's state
 
     /**
@@ -34,7 +38,7 @@ public class Monitor {
                 // Double-check inside synchronized block to ensure atomicity if 'owner' changed.
                 if (owner == thread) {
                     entryCount++;
-                    System.out.println("Monitor: Thread " + thread.getThreadId() + " re-entered. Owner: " + (owner != null ? owner.getThreadId() : "none") + ". New Entry Count: " + entryCount);
+                    Logger.debug("Monitor: Thread " + thread.getThreadId() + " re-entered. Owner: " + (owner != null ? owner.getThreadId() : "none") + ". New Entry Count: " + entryCount);
                     return;
                 }
             }
@@ -48,9 +52,10 @@ public class Monitor {
                     owner = thread;
                     entryCount = 1;
                     acquired = true;
-                    System.out.println("Monitor: Thread " + thread.getThreadId() + " acquired lock. Owner: " + owner.getThreadId() + ". Entry Count: " + entryCount);
+                    Logger.debug("Monitor: Thread " + thread.getThreadId() + " acquired lock. Owner: " + owner.getThreadId() + ". Entry Count: " + entryCount);
                     // Remove from entry queue if it was added in a previous iteration (e.g. lost race, then parked)
                     entryQueue.remove(thread);
+                    waitingThreads.remove(thread);
 
                     // Ensure the thread is in a runnable state for the scheduler.
                     // If it was BLOCKED by this monitor, it needs to become RUNNABLE and be known to scheduler.
@@ -61,8 +66,9 @@ public class Monitor {
                 } else {
                     // Monitor is owned by another thread, or we lost a race.
                     // Add to entry queue if not already present.
-                    if (!entryQueue.contains(thread)) {
-                        System.out.println("Monitor: Thread " + thread.getThreadId() + " found lock held by " + (owner != null ? owner.getThreadId() : "unknown") + ". Adding to entry queue ("+ entryQueue.size() +" waiting).");
+                    if (!waitingThreads.contains(thread)) {
+                        Logger.debug("Monitor: Thread " + thread.getThreadId() + " found lock held by " + (owner != null ? owner.getThreadId() : "unknown") + ". Adding to entry queue ("+ entryQueue.size() +" waiting).");
+                        waitingThreads.add(thread);
                         entryQueue.add(thread);
                     }
                 }
@@ -72,9 +78,9 @@ public class Monitor {
                 // If lock was not acquired, park the thread cooperatively.
                 // Set state to BLOCKED before parking.
                 thread.setState(JVMThread.ThreadState.BLOCKED);
-                System.out.println("Monitor: Thread " + thread.getThreadId() + " is BLOCKED by monitor, parking cooperatively.");
+                Logger.debug("Monitor: Thread " + thread.getThreadId() + " is BLOCKED by monitor, parking cooperatively.");
                 parkThreadCooperatively(thread); // This call will yield until the thread's state is no longer BLOCKED.
-                System.out.println("Monitor: Thread " + thread.getThreadId() + " unparked or state changed (now "+thread.getState()+"), re-contending for lock.");
+                Logger.debug("Monitor: Thread " + thread.getThreadId() + " unparked or state changed (now "+thread.getState()+"), re-contending for lock.");
             }
         }
     }
@@ -100,15 +106,16 @@ public class Monitor {
             }
 
             entryCount--;
-            System.out.println("Monitor: Thread " + thread.getThreadId() + " exited monitor. Owner: " + (owner != null ? owner.getThreadId() : "none") + ". New Entry Count: " + entryCount);
+            Logger.debug("Monitor: Thread " + thread.getThreadId() + " exited monitor. Owner: " + (owner != null ? owner.getThreadId() : "none") + ". New Entry Count: " + entryCount);
 
             if (entryCount == 0) {
                 owner = null;
-                System.out.println("Monitor: Lock fully released by thread " + thread.getThreadId());
+                Logger.debug("Monitor: Lock fully released by thread " + thread.getThreadId());
                 if (!entryQueue.isEmpty()) {
                     JVMThread nextThreadToWake = entryQueue.poll(); // Retrieve and remove the head of the queue.
                     if (nextThreadToWake != null) {
-                        System.out.println("Monitor: Notifying thread " + nextThreadToWake.getThreadId() + " from entry queue to become RUNNABLE.");
+                        waitingThreads.remove(nextThreadToWake);
+                        Logger.debug("Monitor: Notifying thread " + nextThreadToWake.getThreadId() + " from entry queue to become RUNNABLE.");
                         nextThreadToWake.setState(JVMThread.ThreadState.RUNNABLE);
                         // Crucially, the scheduler must be informed that this thread is now runnable.
                         Scheduler.getInstance().registerThread(nextThreadToWake);
@@ -128,7 +135,7 @@ public class Monitor {
      */
     private void parkThreadCooperatively(JVMThread thread) {
         // This thread is already marked BLOCKED by the enter() method before this call.
-        System.out.println("Monitor: parkThreadCooperatively for thread " + thread.getThreadId() + ". State: " + thread.getState() + ". Yielding control.");
+        Logger.debug("Monitor: parkThreadCooperatively for thread " + thread.getThreadId() + ". State: " + thread.getState() + ". Yielding control.");
 
         // Loop as long as the thread is marked BLOCKED.
         // An external action (like unparking in exit()) must change its state to RUNNABLE.
@@ -137,7 +144,7 @@ public class Monitor {
                                   // This is our equivalent of Thread.yield() from the article's Monitor.
         }
         // When the loop exits, the thread's state is no longer BLOCKED.
-        System.out.println("Monitor: Thread " + thread.getThreadId() + " is no longer BLOCKED in parkThreadCooperatively. Current state: " + thread.getState());
+        Logger.debug("Monitor: Thread " + thread.getThreadId() + " is no longer BLOCKED in parkThreadCooperatively. Current state: " + thread.getState());
     }
 
     /**
