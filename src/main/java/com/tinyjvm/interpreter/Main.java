@@ -1,3 +1,5 @@
+package com.tinyjvm.interpreter;
+
 public class Main {
     public static void main(String[] args) {
         // Bytecode for:

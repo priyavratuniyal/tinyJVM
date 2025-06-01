@@ -1,3 +1,5 @@
+package com.tinyjvm.interpreter;
+
 public class InstructionSet {
 
     public static void bipush(JFrame frame) {

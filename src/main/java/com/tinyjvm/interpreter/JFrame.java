@@ -1,3 +1,5 @@
+package com.tinyjvm.interpreter;
+
 public class JFrame {
     public int pc;
     public OperandStack operandStack;
